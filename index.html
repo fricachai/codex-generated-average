@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>敘述性統計計算器</title>
+  <style>
+    :root {
+      font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+      color-scheme: light;
+      --bg: #f7f8fb;
+      --card: #ffffff;
+      --text: #14213d;
+      --muted: #5f6c7b;
+      --accent: #2563eb;
+      --border: #dbe2ea;
+      --danger: #d7263d;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+
+    .app {
+      width: min(900px, 100%);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 16px 40px rgba(20, 33, 61, 0.08);
+      overflow: hidden;
+    }
+
+    .header {
+      padding: 24px;
+      background: linear-gradient(120deg, #eff6ff, #f8fafc);
+      border-bottom: 1px solid var(--border);
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(1.35rem, 2.5vw, 1.8rem);
+    }
+
+    .desc {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 0.95rem;
+    }
+
+    .main {
+      display: grid;
+      gap: 20px;
+      padding: 24px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 130px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 1rem;
+      line-height: 1.6;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+
+    .options {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: 0.15s ease;
+    }
+
+    .primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .primary:hover {
+      background: #1d4ed8;
+    }
+
+    .ghost {
+      background: #fff;
+      color: var(--text);
+      border-color: var(--border);
+    }
+
+    .ghost:hover {
+      border-color: #b6c2d0;
+      background: #f8fafc;
+    }
+
+    .error {
+      color: var(--danger);
+      margin: 0;
+      min-height: 22px;
+      font-size: 0.95rem;
+    }
+
+    .results {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      background: #fcfdff;
+    }
+
+    .card h3 {
+      margin: 0;
+      font-size: 0.86rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .value {
+      margin-top: 8px;
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+
+    .summary {
+      margin: 0;
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      line-height: 1.7;
+      background: #fafcff;
+      color: #223049;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <h1>敘述性統計計算器</h1>
+      <p class="desc">輸入數字（可用逗號、空白或換行分隔），即可快速得到平均數、標準差、變異數、中位數、四分位數等常用統計資訊。</p>
+    </header>
+
+    <section class="main">
+      <textarea id="input" placeholder="例如：12, 15, 18, 20, 22"></textarea>
+
+      <div class="options">
+        <label><input type="radio" name="stdType" value="population" checked /> 母體標準差（除以 n）</label>
+        <label><input type="radio" name="stdType" value="sample" /> 樣本標準差（除以 n-1）</label>
+      </div>
+
+      <div class="buttons">
+        <button class="primary" id="calculate">開始計算</button>
+        <button class="ghost" id="example">載入範例資料</button>
+        <button class="ghost" id="clear">清空</button>
+      </div>
+
+      <p id="error" class="error"></p>
+
+      <div class="results" id="results"></div>
+      <p class="summary" id="summary">請先輸入資料並點擊「開始計算」。</p>
+    </section>
+  </main>
+
+  <script>
+    const inputEl = document.getElementById('input');
+    const resultEl = document.getElementById('results');
+    const errorEl = document.getElementById('error');
+    const summaryEl = document.getElementById('summary');
+
+    const round = (value) => (Number.isFinite(value) ? value.toLocaleString('zh-Hant-TW', { maximumFractionDigits: 6 }) : '—');
+
+    function parseNumbers(raw) {
+      const tokens = raw
+        .split(/[\s,、，;；]+/)
+        .map((token) => token.trim())
+        .filter(Boolean);
+
+      if (tokens.length === 0) {
+        throw new Error('請先輸入至少一個數字。');
+      }
+
+      const nums = tokens.map((token) => Number(token));
+      const badIndex = nums.findIndex((n) => !Number.isFinite(n));
+
+      if (badIndex !== -1) {
+        throw new Error(`第 ${badIndex + 1} 個值（${tokens[badIndex]}）不是有效數字。`);
+      }
+
+      return nums;
+    }
+
+    function quantile(sorted, q) {
+      const pos = (sorted.length - 1) * q;
+      const base = Math.floor(pos);
+      const rest = pos - base;
+      return sorted[base + 1] !== undefined
+        ? sorted[base] + rest * (sorted[base + 1] - sorted[base])
+        : sorted[base];
+    }
+
+    function analyze(numbers, stdType) {
+      const sorted = [...numbers].sort((a, b) => a - b);
+      const n = numbers.length;
+      const sum = numbers.reduce((acc, val) => acc + val, 0);
+      const mean = sum / n;
+      const min = sorted[0];
+      const max = sorted[n - 1];
+      const range = max - min;
+      const median = quantile(sorted, 0.5);
+      const q1 = quantile(sorted, 0.25);
+      const q3 = quantile(sorted, 0.75);
+      const iqr = q3 - q1;
+      const divisor = stdType === 'sample' ? n - 1 : n;
+
+      if (divisor <= 0) {
+        throw new Error('樣本標準差需要至少兩筆資料。');
+      }
+
+      const variance = numbers.reduce((acc, val) => acc + (val - mean) ** 2, 0) / divisor;
+      const std = Math.sqrt(variance);
+      const cv = mean === 0 ? null : (std / Math.abs(mean)) * 100;
+
+      return { n, sum, mean, min, max, range, median, q1, q3, iqr, variance, std, cv };
+    }
+
+    function render(results, stdType) {
+      const statCards = [
+        ['樣本數', results.n],
+        ['總和', results.sum],
+        ['平均數', results.mean],
+        ['中位數', results.median],
+        ['最小值', results.min],
+        ['最大值', results.max],
+        ['全距', results.range],
+        ['第一四分位數 (Q1)', results.q1],
+        ['第三四分位數 (Q3)', results.q3],
+        ['四分位距 (IQR)', results.iqr],
+        [stdType === 'sample' ? '樣本變異數' : '母體變異數', results.variance],
+        [stdType === 'sample' ? '樣本標準差' : '母體標準差', results.std],
+        ['變異係數 CV(%)', results.cv]
+      ];
+
+      resultEl.innerHTML = statCards.map(([name, value]) => `
+        <article class="card">
+          <h3>${name}</h3>
+          <div class="value">${value === null ? '無法計算（平均數為 0）' : round(value)}</div>
+        </article>
+      `).join('');
+
+      const stdName = stdType === 'sample' ? '樣本標準差（n-1）' : '母體標準差（n）';
+      summaryEl.textContent = `資料共有 ${results.n} 筆，平均數為 ${round(results.mean)}，中位數為 ${round(results.median)}。` +
+        ` 數值分布從 ${round(results.min)} 到 ${round(results.max)}（全距 ${round(results.range)}），${stdName}為 ${round(results.std)}。`;
+    }
+
+    function calculate() {
+      errorEl.textContent = '';
+      try {
+        const numbers = parseNumbers(inputEl.value);
+        const stdType = document.querySelector('input[name="stdType"]:checked').value;
+        const results = analyze(numbers, stdType);
+        render(results, stdType);
+      } catch (err) {
+        resultEl.innerHTML = '';
+        summaryEl.textContent = '請修正輸入內容後再試一次。';
+        errorEl.textContent = err.message;
+      }
+    }
+
+    document.getElementById('calculate').addEventListener('click', calculate);
+    document.getElementById('example').addEventListener('click', () => {
+      inputEl.value = '12, 15, 18, 20, 22, 22, 25, 30';
+      calculate();
+    });
+    document.getElementById('clear').addEventListener('click', () => {
+      inputEl.value = '';
+      resultEl.innerHTML = '';
+      errorEl.textContent = '';
+      summaryEl.textContent = '請先輸入資料並點擊「開始計算」。';
+      inputEl.focus();
+    });
+  </script>
+</body>
+</html>
